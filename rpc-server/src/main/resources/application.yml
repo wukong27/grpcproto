@@ -1,0 +1,38 @@
+server:
+  port: 8080
+spring:
+  application:
+    name: wukong-grpc-gateway
+  cloud:
+    gateway:
+      default-filters:
+        - RemoveRequestHeader=Cookie
+      routes:
+        - id: grpc_hello_route
+          uri: no://op       # Dummy URI，防止 Spring 校验失败
+          predicates:
+            - Path=/universal/Invoke
+
+grpc:
+  server:
+    port: 9090                  # 你的 gRPC 服务监听端口
+  client:
+    universal-client:
+      address: 'static://127.0.0.1:9090'
+      negotiation-type: plaintext
+
+# Swagger 配置（点一下就调）
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    enabled: true
+    url: /v3/api-docs/universal
+    config-url: /v3/api-docs/swagger-config
+    validator-url: null
+  api-docs:
+    path: /v3/api-docs
+    enabled: true
+    groups:
+      enabled: true
+  packages-to-scan: com.example
+  paths-to-match: /v1/**

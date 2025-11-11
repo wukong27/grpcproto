@@ -1,0 +1,21 @@
+syntax = "proto3";
+option java_package = "com.example.universal";
+import "google/protobuf/struct.proto";
+import "buf/validate/validate.proto";
+
+
+service UniversalService {
+    rpc Invoke (CallRequest) returns (CallResponse);
+}
+
+message CallRequest {
+    string service = 1 [(buf.validate.field).string.min_len = 1];
+    string method = 2 [(buf.validate.field).string.min_len = 1];
+    google.protobuf.Struct payload = 3;
+}
+
+message CallResponse {
+    int32 code = 1;
+    string message = 2;
+    google.protobuf.Struct data = 3;
+}

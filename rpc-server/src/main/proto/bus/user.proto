@@ -1,0 +1,26 @@
+//syntax = "proto3";
+//option java_package = "com.example.user";
+//option java_outer_classname = "UserProto";
+//option java_multiple_files = true;
+//
+//import "buf/validate/validate.proto";
+//import "google/protobuf/timestamp.proto";
+//import "universal.proto";
+//
+//message User {
+//    int64 id = 1;
+//    string name = 2;
+//    int32 age = 3;
+//    string email = 4;
+//    google.protobuf.Timestamp create_time = 5;
+//    google.protobuf.Timestamp update_time = 6;
+//}
+//
+//// ==================== 服务定义（完美支持你的通用网关）===================
+//
+//service UserService {
+//
+//    // 普通有返回值（同步）
+//    rpc CreateUser(CallRequest) returns (CallResponse);
+//
+//}
