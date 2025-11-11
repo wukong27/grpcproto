@@ -1,0 +1,1 @@
+grpc整合springboot,提供一个统一对外的grpc服务,实现通用调用;减少开发grpc协议接口时的频繁编写proto文件;
