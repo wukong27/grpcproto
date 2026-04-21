@@ -3,7 +3,6 @@ package com.nameservice;
 import com.alibaba.nacos.api.naming.NamingFactory;
 import com.alibaba.nacos.api.naming.NamingService;
 import com.alibaba.nacos.api.naming.pojo.Instance;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
@@ -15,22 +14,32 @@ import java.util.Properties;
 @Service
 public class NacosRegister {
 
-    @Value("${grpc.server.port}")
-    private int grpcPort;
-    @Value("${spring.application.name}")
-    private String serverName;
+    private final int grpcPort;
+    private final String serverName;
+    private final NacosProperties nacosProperties;
 
-    public void register(int port,String serverName) throws Exception {
-        // 1. 获取本机IP（优先获取非回环地址）
+    public NacosRegister(
+            @org.springframework.beans.factory.annotation.Value("${grpc.server.port}") int grpcPort,
+            @org.springframework.beans.factory.annotation.Value("${spring.application.name}") String serverName,
+            NacosProperties nacosProperties
+    ) {
+        this.grpcPort = grpcPort;
+        this.serverName = serverName;
+        this.nacosProperties = nacosProperties;
+    }
+
+    public void register(int port, String serverName) throws Exception {
+        // 1. 获取本机 IP（优先获取非回环地址）
         String ip = getLocalIp();
         System.out.println("Local IP: " + ip);
+
         // 2. 创建 Nacos NamingService
         Properties properties = new Properties();
-        properties.put("serverAddr", "127.0.0.1:8848");
+        properties.put("serverAddr", nacosProperties.getServerAddr());
 
         NamingService namingService = NamingFactory.createNamingService(properties);
 
-        // 3. 构造实例（推荐方式，比简单注册更灵活）
+        // 3. 构造实例（推荐方式，比单独注册更灵活）
         Instance instance = new Instance();
         instance.setIp(ip);
         instance.setPort(port);
@@ -42,7 +51,7 @@ public class NacosRegister {
         instance.getMetadata().put("version", "v1");
         instance.getMetadata().put("env", "dev");
 
-        // 4. 注册实例（自动心跳启动🔥）
+        // 4. 注册实例（自动心跳启动）
         namingService.registerInstance(serverName, instance);
 
         System.out.println("Service registered to Nacos: " + serverName);
@@ -55,10 +64,9 @@ public class NacosRegister {
     }
 
     /**
-     * 获取本机IP（优先内网IP）
+     * 获取本机 IP（优先内网 IP）
      */
     private static String getLocalIp() throws Exception {
-
         Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
 
         while (interfaces.hasMoreElements()) {
@@ -86,7 +94,6 @@ public class NacosRegister {
 
     @PostConstruct
     public void init() throws Exception {
-        register(grpcPort,serverName);
+        register(grpcPort, serverName);
     }
-
 }

@@ -8,7 +8,7 @@ import java.lang.annotation.Target;
 @Target(ElementType.TYPE)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface RpcService {
-    String value() default ""; // 可选的服务名
+    String serviceName() default ""; // 可选的服务名
 
     /**
      * 服务器名称，用于匹配配置文件中的 grpc.service.{serverName}.url

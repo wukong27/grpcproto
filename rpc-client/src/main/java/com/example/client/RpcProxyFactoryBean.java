@@ -7,6 +7,11 @@ import com.example.universal.UniversalServiceGrpc;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Struct;
 import com.google.protobuf.util.JsonFormat;
+import io.grpc.CallOptions;
+import io.grpc.ManagedChannel;
+import io.grpc.stub.AbstractStub;
+import io.grpc.stub.StreamObserver;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
 import org.springframework.beans.factory.FactoryBean;
 import org.springframework.context.ApplicationContext;
@@ -14,7 +19,11 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.core.env.Environment;
 
 import java.lang.reflect.Proxy;
-
+import java.util.function.Consumer;
+import java.util.function.Function;
+import java.util.Map;
+@Slf4j
+@SuppressWarnings("unchecked")
 public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContextAware {
 
     private final Class<T> interfaceType;
@@ -34,6 +43,100 @@ public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContex
     private GrpcClientPool channelPool;
 
     @Override
+    public T getObject() throws Exception {
+/*        // 在此处进行配置检查
+        if(!initializeChannelPool()){
+            return null;
+        }*/
+        NacosClientPool  nacosClientPool = applicationContext.getBean(NacosClientPool.class);
+        String serverName = getServerName();
+        ManagedChannel channel = nacosClientPool.getChannel(serverName);
+        if(channel==null){
+            log.error("serverName:{},channel is null,please check your config for the {} server.",serverName,serverName);
+            return null;
+        }
+        return (T) Proxy.newProxyInstance(interfaceType.getClassLoader(),new Class<?>[]{interfaceType},
+                (proxy, method, args) -> {
+                    // === 核心: 将方法调用转发到 gRPC 服务 ===
+                    String serviceName = interfaceType.getSimpleName();
+                    String methodName = method.getName();
+                    System.out.println("调用远程 gRPC 服务: " + serviceName + "." + methodName);
+                    // 构建请求参数
+                    Struct.Builder structBuilder = Struct.newBuilder();
+                    JsonFormat.parser().merge(JSON.toJSONString(args[0]), structBuilder);
+                    Struct payload = structBuilder.build();
+                    Universal.CallRequest callRequest = Universal.CallRequest.newBuilder()
+                            .setService(serviceName)
+                            .setMethod(methodName)
+                            .setPayload(payload)
+                            .build();
+                    // 调用 gRPC 服务
+                    final Object[] result = new Object[1];
+                    execute(channel,
+                            UniversalServiceGrpc::newStub,
+                            stub -> stub.invoke(callRequest, new StreamObserver<>(){
+                                @Override
+                                public void onNext(Universal.CallResponse response) {
+                                    // 获取方法的返回类型
+                                    Class<?> returnType = method.getReturnType();
+                                    if (returnType == Universal.CallResponse.class) {
+                                        // 如果返回类型就是 CallResponse，直接返回
+                                        result[0] = response;
+                                    } else if (returnType == Void.TYPE || returnType == Void.class) {
+                                        // 如果返回类型是 void，返回 null
+                                        result[0] = null;
+                                    } else {
+                                        Struct data = response.getData();
+                                        // 将 Struct 数据转换为期望的返回类型
+                                        String dataStr = null;
+                                        try {
+                                            dataStr = JsonFormat.printer().includingDefaultValueFields().print(data);
+                                            // 方案一：使用 ObjectMapper 反序列化
+                                            result[0] = JSON.parseObject(dataStr, returnType);
+                                        } catch (InvalidProtocolBufferException e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    }
+                                }
+                                @Override
+                                public void onError(Throwable t) {throw new RuntimeException("gRPC调用失败: " + t.getMessage(), t);}
+                                @Override
+                                public void onCompleted() {}
+                            }));
+                    // 检查结果是否为空（对于void方法这是正常的）
+                    if (result[0] == null && method.getReturnType() != Void.TYPE && method.getReturnType() != Void.class) {
+                        log.warn("gRPC调用返回null，方法返回类型: {}", method.getReturnType());
+                    }
+                    return result[0];
+                }
+        );
+    }
+
+    public void execute(
+            ManagedChannel channel,
+            Function<ManagedChannel, UniversalServiceGrpc.UniversalServiceStub> stubFactory,
+            Consumer<UniversalServiceGrpc.UniversalServiceStub> action) {
+        if (channel == null || channel.isShutdown()) {
+            throw new IllegalStateException("gRPC channel is null or shutdown");
+        }
+        
+        if (stubFactory == null) {
+            throw new IllegalArgumentException("stubFactory cannot be null");
+        }
+        
+        if (action == null) {
+            throw new IllegalArgumentException("action cannot be null");
+        }
+        
+        UniversalServiceGrpc.UniversalServiceStub stub = stubFactory.apply(channel);
+        if (stub == null) {
+            throw new IllegalStateException("Failed to create gRPC stub");
+        }
+        
+        action.accept(stub);
+    }
+
+/*    @Override
     public T getObject() {
         // 在此处进行配置检查
         if(!initializeChannelPool()){
@@ -89,7 +192,7 @@ public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContex
                     return ret;
                 }
         );
-    }
+    }*/
 
     private boolean initializeChannelPool() {
         // 获取服务名称 - 可以来自 @RpcService 注解或者默认使用类名
@@ -118,6 +221,15 @@ public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContex
     }
 
     private String getServiceName() {
+        // 检查接口上是否有 @RpcService 注解并获取 name 属性
+        RpcService rpcServiceAnnotation = interfaceType.getAnnotation(RpcService.class);
+        if (rpcServiceAnnotation != null && !rpcServiceAnnotation.serviceName().isEmpty()) {
+            return rpcServiceAnnotation.serviceName();
+        }
+        // 默认使用简单类名
+        return interfaceType.getSimpleName();
+    }
+    private String getServerName() {
         // 检查接口上是否有 @RpcService 注解并获取 name 属性
         RpcService rpcServiceAnnotation = interfaceType.getAnnotation(RpcService.class);
         if (rpcServiceAnnotation != null && !rpcServiceAnnotation.serverName().isEmpty()) {

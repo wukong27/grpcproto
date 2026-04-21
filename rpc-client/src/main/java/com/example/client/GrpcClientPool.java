@@ -1,7 +1,9 @@
 package com.example.client;
 
+import com.example.nameservice.NacosNameResolverProvider;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
+import io.grpc.NameResolverRegistry;
 import io.grpc.stub.AbstractStub;
 
 import java.util.Map;

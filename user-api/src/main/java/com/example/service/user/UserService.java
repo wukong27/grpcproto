@@ -4,7 +4,7 @@ import com.example.RpcService;
 import org.springframework.stereotype.Component;
 
 @Component
-@RpcService(value = "userService", serverName = "user")
+@RpcService(serviceName = "userService", serverName = "userService")
 public interface UserService {
     ResponseDto<User> createUser(User name);
 }
