@@ -7,9 +7,7 @@ import com.example.universal.UniversalServiceGrpc;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.Struct;
 import com.google.protobuf.util.JsonFormat;
-import io.grpc.CallOptions;
 import io.grpc.ManagedChannel;
-import io.grpc.stub.AbstractStub;
 import io.grpc.stub.StreamObserver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
@@ -19,9 +17,10 @@ import org.springframework.context.ApplicationContextAware;
 import org.springframework.core.env.Environment;
 
 import java.lang.reflect.Proxy;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 import java.util.function.Function;
-import java.util.Map;
+
 @Slf4j
 @SuppressWarnings("unchecked")
 public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContextAware {
@@ -44,10 +43,6 @@ public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContex
 
     @Override
     public T getObject() throws Exception {
-/*        // 在此处进行配置检查
-        if(!initializeChannelPool()){
-            return null;
-        }*/
         NacosClientPool  nacosClientPool = applicationContext.getBean(NacosClientPool.class);
         String serverName = getServerName();
         ManagedChannel channel = nacosClientPool.getChannel(serverName);
@@ -71,7 +66,7 @@ public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContex
                             .setPayload(payload)
                             .build();
                     // 调用 gRPC 服务
-                    final Object[] result = new Object[1];
+                    CompletableFuture<Object> future = new CompletableFuture<>();
                     execute(channel,
                             UniversalServiceGrpc::newStub,
                             stub -> stub.invoke(callRequest, new StreamObserver<>(){
@@ -81,18 +76,15 @@ public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContex
                                     Class<?> returnType = method.getReturnType();
                                     if (returnType == Universal.CallResponse.class) {
                                         // 如果返回类型就是 CallResponse，直接返回
-                                        result[0] = response;
+                                        future.complete(response);
                                     } else if (returnType == Void.TYPE || returnType == Void.class) {
                                         // 如果返回类型是 void，返回 null
-                                        result[0] = null;
+                                        future.complete(null);
                                     } else {
                                         Struct data = response.getData();
-                                        // 将 Struct 数据转换为期望的返回类型
-                                        String dataStr = null;
                                         try {
-                                            dataStr = JsonFormat.printer().includingDefaultValueFields().print(data);
-                                            // 方案一：使用 ObjectMapper 反序列化
-                                            result[0] = JSON.parseObject(dataStr, returnType);
+                                            String dataStr = JsonFormat.printer().includingDefaultValueFields().print(data);
+                                            future.complete(JSON.parseObject(dataStr, returnType));  ;
                                         } catch (InvalidProtocolBufferException e) {
                                             throw new RuntimeException(e);
                                         }
@@ -104,10 +96,7 @@ public class RpcProxyFactoryBean<T> implements FactoryBean<T>, ApplicationContex
                                 public void onCompleted() {}
                             }));
                     // 检查结果是否为空（对于void方法这是正常的）
-                    if (result[0] == null && method.getReturnType() != Void.TYPE && method.getReturnType() != Void.class) {
-                        log.warn("gRPC调用返回null，方法返回类型: {}", method.getReturnType());
-                    }
-                    return result[0];
+                    return future.get();
                 }
         );
     }
