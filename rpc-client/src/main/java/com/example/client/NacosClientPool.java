@@ -13,6 +13,7 @@ import javax.annotation.PostConstruct;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 
 @Component
 public class NacosClientPool {
@@ -36,6 +37,7 @@ public class NacosClientPool {
                         .forTarget("nacos://"+serverName)
                         .defaultLoadBalancingPolicy("round_robin")
                         .usePlaintext()
+                        .executor(Executors.newFixedThreadPool(5))
                         .build();
                 cacheChannel.putIfAbsent(serverName,channel);
                 return channel;

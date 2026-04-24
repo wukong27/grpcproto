@@ -44,8 +44,7 @@ public class RpcServiceRegistrar implements ImportBeanDefinitionRegistrar {
                     return;
                 }
 
-                BeanDefinitionBuilder builder =
-                        BeanDefinitionBuilder.genericBeanDefinition(RpcProxyFactoryBean.class);
+                BeanDefinitionBuilder builder = BeanDefinitionBuilder.genericBeanDefinition(RpcProxyFactoryBean.class);
                 builder.addConstructorArgValue(clazz);
 
                 String beanName = clazz.getSimpleName();
